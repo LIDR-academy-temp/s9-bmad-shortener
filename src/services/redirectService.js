@@ -1,7 +1,15 @@
 const cache = require('../repos/cache');
 const linksRepo = require('../repos/linksRepo');
+const clickPublisher = require('./clickPublisher');
 
 const CODE_FORMAT = /^[A-Za-z0-9]{7}$/;
+
+// intentionally not awaited; publishClickEvent never rejects, but a
+// defensive no-op catch guards against any unexpected rejection
+// (e.g. in tests that mock it) turning into an unhandled rejection.
+function trackClick(code) {
+  clickPublisher.publishClickEvent(code).catch(() => {});
+}
 
 async function resolveCode(code) {
   if (!CODE_FORMAT.test(code)) {
@@ -15,6 +23,7 @@ async function resolveCode(code) {
     cachedUrl = null;
   }
   if (cachedUrl) {
+    trackClick(code);
     return { found: true, longUrl: cachedUrl };
   }
 
@@ -25,6 +34,7 @@ async function resolveCode(code) {
     } catch (err) {
       // Cache write failure must never fail an already-known-good response.
     }
+    trackClick(code);
     return { found: true, longUrl };
   }
 
