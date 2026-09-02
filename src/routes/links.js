@@ -1,6 +1,7 @@
 const express = require('express');
 const shortenService = require('../services/shortenService');
 const redirectService = require('../services/redirectService');
+const statsService = require('../services/statsService');
 
 const router = express.Router();
 
@@ -26,6 +27,20 @@ router.get('/:code', async (req, res, next) => {
       return res.status(404).json({ error: 'short code not found' });
     }
     res.status(302).location(longUrl).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:code/clicks', async (req, res, next) => {
+  try {
+    const { found, clicks } = await statsService.getClickCount(
+      req.params.code
+    );
+    if (!found) {
+      return res.status(404).json({ error: 'short code not found' });
+    }
+    res.status(200).json({ code: req.params.code, clicks });
   } catch (err) {
     next(err);
   }

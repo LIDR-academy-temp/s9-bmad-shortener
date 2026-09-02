@@ -4,7 +4,7 @@ jest.mock('../repos/db', () => ({
   pool: { query: mockQuery },
 }));
 
-const { insertLink, findByCode, incrementClickCount } = require('../repos/linksRepo');
+const { insertLink, findByCode, incrementClickCount, findClickCount } = require('../repos/linksRepo');
 
 describe('repos/linksRepo', () => {
   beforeEach(() => {
@@ -52,5 +52,28 @@ describe('repos/linksRepo', () => {
       'UPDATE links SET click_count = click_count + 1 WHERE code = $1',
       ['abc1234']
     );
+  });
+
+  it('findClickCount selects click_count by code with the correct SQL and binding', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ click_count: 42 }],
+    });
+
+    const result = await findClickCount('abc1234');
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'SELECT click_count FROM links WHERE code = $1',
+      ['abc1234']
+    );
+    expect(result).toBe(42);
+  });
+
+  it('findClickCount returns undefined when no row matches', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await findClickCount('zzzzzzz');
+
+    expect(result).toBeUndefined();
   });
 });

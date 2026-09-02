@@ -22,4 +22,12 @@ async function incrementClickCount(code) {
   );
 }
 
-module.exports = { insertLink, findByCode, incrementClickCount };
+async function findClickCount(code) {
+  const result = await pool.query(
+    'SELECT click_count FROM links WHERE code = $1',
+    [code]
+  );
+  return result.rows[0] ? result.rows[0].click_count : undefined;
+}
+
+module.exports = { insertLink, findByCode, incrementClickCount, findClickCount };
