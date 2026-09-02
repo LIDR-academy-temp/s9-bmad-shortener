@@ -1,4 +1,13 @@
 const app = require('./app');
+const { bootstrapSchema } = require('./repos/db');
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => console.log(`API listening on ${PORT}`));
+
+bootstrapSchema()
+  .then(() => {
+    app.listen(PORT, () => console.log(`API listening on ${PORT}`));
+  })
+  .catch((err) => {
+    console.error('Failed to bootstrap schema', err);
+    process.exit(1);
+  });
