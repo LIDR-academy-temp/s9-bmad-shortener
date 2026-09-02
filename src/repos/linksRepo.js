@@ -15,4 +15,11 @@ async function findByCode(code) {
   return result.rows[0] ? result.rows[0].long_url : undefined;
 }
 
-module.exports = { insertLink, findByCode };
+async function incrementClickCount(code) {
+  await pool.query(
+    'UPDATE links SET click_count = click_count + 1 WHERE code = $1',
+    [code]
+  );
+}
+
+module.exports = { insertLink, findByCode, incrementClickCount };

@@ -4,7 +4,7 @@ jest.mock('../repos/db', () => ({
   pool: { query: mockQuery },
 }));
 
-const { insertLink, findByCode } = require('../repos/linksRepo');
+const { insertLink, findByCode, incrementClickCount } = require('../repos/linksRepo');
 
 describe('repos/linksRepo', () => {
   beforeEach(() => {
@@ -42,5 +42,15 @@ describe('repos/linksRepo', () => {
     const result = await findByCode('zzzzzzz');
 
     expect(result).toBeUndefined();
+  });
+
+  it('incrementClickCount runs the atomic UPDATE statement with the code binding', async () => {
+    await incrementClickCount('abc1234');
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'UPDATE links SET click_count = click_count + 1 WHERE code = $1',
+      ['abc1234']
+    );
   });
 });

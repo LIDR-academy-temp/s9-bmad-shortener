@@ -7,8 +7,9 @@ const logger = pino();
 
 let connectionPromise = null;
 let channelPromise = null;
+let consumeChannelPromise = null;
 
-async function ensureChannel() {
+async function ensureConnection() {
   if (!connectionPromise) {
     connectionPromise = amqp
       .connect(process.env.RABBITMQ_URL)
@@ -17,38 +18,57 @@ async function ensureChannel() {
           logger.error({ err }, 'rabbitmq connection error');
           connectionPromise = null;
           channelPromise = null;
+          consumeChannelPromise = null;
         });
         connection.on('close', () => {
           connectionPromise = null;
           channelPromise = null;
+          consumeChannelPromise = null;
         });
         return connection;
       })
       .catch((err) => {
         connectionPromise = null;
         channelPromise = null;
+        consumeChannelPromise = null;
         throw err;
       });
   }
 
-  if (!channelPromise) {
-    channelPromise = connectionPromise
-      .then((connection) => connection.createChannel())
-      .then(async (channel) => {
-        channel.on('error', (err) => {
-          logger.error({ err }, 'rabbitmq channel error');
-          channelPromise = null;
-        });
-        channel.on('close', () => {
-          channelPromise = null;
-        });
-        await channel.assertQueue(QUEUE_NAME, { durable: true });
-        return channel;
-      })
-      .catch((err) => {
-        channelPromise = null;
-        throw err;
+  return connectionPromise;
+}
+
+function createManagedChannel(connPromise, errorLabel, resetChannelPromise) {
+  return connPromise
+    .then((connection) => connection.createChannel())
+    .then(async (channel) => {
+      channel.on('error', (err) => {
+        logger.error({ err }, errorLabel);
+        resetChannelPromise();
       });
+      channel.on('close', () => {
+        resetChannelPromise();
+      });
+      await channel.assertQueue(QUEUE_NAME, { durable: true });
+      return channel;
+    })
+    .catch((err) => {
+      resetChannelPromise();
+      throw err;
+    });
+}
+
+async function ensureChannel() {
+  await ensureConnection();
+
+  if (!channelPromise) {
+    channelPromise = createManagedChannel(
+      connectionPromise,
+      'rabbitmq channel error',
+      () => {
+        channelPromise = null;
+      }
+    );
   }
 
   return channelPromise;
@@ -63,8 +83,38 @@ async function publishToQueue(message) {
   } catch (err) {
     connectionPromise = null;
     channelPromise = null;
+    consumeChannelPromise = null;
     throw err;
   }
 }
 
-module.exports = { publishToQueue };
+async function ensureConsumeChannel() {
+  await ensureConnection();
+
+  if (!consumeChannelPromise) {
+    consumeChannelPromise = createManagedChannel(
+      connectionPromise,
+      'rabbitmq consume channel error',
+      () => {
+        consumeChannelPromise = null;
+      }
+    );
+  }
+
+  return consumeChannelPromise;
+}
+
+async function consumeQueue(onMessage) {
+  const channel = await ensureConsumeChannel();
+  await channel.consume(
+    QUEUE_NAME,
+    (msg) => {
+      if (msg) {
+        onMessage(msg.content);
+      }
+    },
+    { noAck: true }
+  );
+}
+
+module.exports = { publishToQueue, consumeQueue };

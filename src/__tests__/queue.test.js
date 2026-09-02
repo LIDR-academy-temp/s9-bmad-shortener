@@ -1,8 +1,10 @@
 const mockSendToQueue = jest.fn();
 const mockAssertQueue = jest.fn().mockResolvedValue(undefined);
+const mockConsume = jest.fn().mockResolvedValue(undefined);
 const mockChannel = {
   assertQueue: mockAssertQueue,
   sendToQueue: mockSendToQueue,
+  consume: mockConsume,
   on: jest.fn(),
 };
 const mockCreateChannel = jest.fn().mockResolvedValue(mockChannel);
@@ -19,9 +21,11 @@ describe('repos/queue', () => {
     mockCreateChannel.mockClear();
     mockAssertQueue.mockClear();
     mockSendToQueue.mockClear();
+    mockConsume.mockClear();
     mockConnect.mockResolvedValue(mockConnection);
     mockCreateChannel.mockResolvedValue(mockChannel);
     mockAssertQueue.mockResolvedValue(undefined);
+    mockConsume.mockResolvedValue(undefined);
   });
 
   it('does not connect to amqplib at require time', () => {
@@ -93,5 +97,69 @@ describe('repos/queue', () => {
 
     expect(mockConnect).toHaveBeenCalledTimes(2);
     expect(mockSendToQueue).toHaveBeenCalledTimes(1);
+  });
+
+  describe('consumeQueue', () => {
+    it('lazily connects, opens a channel, asserts the durable queue, and consumes with noAck: true', async () => {
+      const { consumeQueue } = require('../repos/queue');
+      const onMessage = jest.fn();
+
+      await consumeQueue(onMessage);
+
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(mockCreateChannel).toHaveBeenCalledTimes(1);
+      expect(mockAssertQueue).toHaveBeenCalledWith('click-events', {
+        durable: true,
+      });
+      expect(mockConsume).toHaveBeenCalledTimes(1);
+
+      const [queueName, , options] = mockConsume.mock.calls[0];
+      expect(queueName).toBe('click-events');
+      expect(options).toEqual({ noAck: true });
+    });
+
+    it('invokes onMessage with msg.content when a message arrives', async () => {
+      const { consumeQueue } = require('../repos/queue');
+      const onMessage = jest.fn();
+
+      await consumeQueue(onMessage);
+
+      const [, handler] = mockConsume.mock.calls[0];
+      const content = Buffer.from(JSON.stringify({ code: 'abc1234' }));
+      handler({ content });
+
+      expect(onMessage).toHaveBeenCalledWith(content);
+    });
+
+    it('does not invoke onMessage when msg is null', async () => {
+      const { consumeQueue } = require('../repos/queue');
+      const onMessage = jest.fn();
+
+      await consumeQueue(onMessage);
+
+      const [, handler] = mockConsume.mock.calls[0];
+      handler(null);
+
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it('reuses the shared connection with publishToQueue', async () => {
+      const { publishToQueue, consumeQueue } = require('../repos/queue');
+
+      await publishToQueue({ code: 'abc1234', timestamp: 'x' });
+      await consumeQueue(jest.fn());
+
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(mockCreateChannel).toHaveBeenCalledTimes(2);
+    });
+
+    it('propagates a rejection from consumeQueue when amqp.connect fails', async () => {
+      mockConnect.mockRejectedValue(new Error('connection refused'));
+      const { consumeQueue } = require('../repos/queue');
+
+      await expect(consumeQueue(jest.fn())).rejects.toThrow(
+        'connection refused'
+      );
+    });
   });
 });
