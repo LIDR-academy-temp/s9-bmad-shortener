@@ -4,7 +4,7 @@ jest.mock('../repos/db', () => ({
   pool: { query: mockQuery },
 }));
 
-const { insertLink } = require('../repos/linksRepo');
+const { insertLink, findByCode } = require('../repos/linksRepo');
 
 describe('repos/linksRepo', () => {
   beforeEach(() => {
@@ -19,5 +19,28 @@ describe('repos/linksRepo', () => {
       'INSERT INTO links (code, long_url) VALUES ($1, $2)',
       ['abc1234', 'https://example.com']
     );
+  });
+
+  it('findByCode selects long_url by code with the correct SQL and binding', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ long_url: 'https://example.com' }],
+    });
+
+    const result = await findByCode('abc1234');
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'SELECT long_url FROM links WHERE code = $1',
+      ['abc1234']
+    );
+    expect(result).toBe('https://example.com');
+  });
+
+  it('findByCode returns undefined when no row matches', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await findByCode('zzzzzzz');
+
+    expect(result).toBeUndefined();
   });
 });
